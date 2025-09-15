@@ -1,0 +1,28 @@
+# Test GRDB.swift on Linux with system SQLite
+FROM swift:6.1-noble AS test
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /grdb
+
+# Copy Package files first for better caching
+COPY Package.swift ./
+
+# Copy all source code
+COPY GRDB ./GRDB
+COPY Sources ./Sources
+COPY Tests ./Tests
+COPY SQLiteCustom ./SQLiteCustom
+COPY Makefile ./
+
+# Show SQLite version and check for snapshot support
+RUN echo "=== System SQLite Info ===" && \
+    sqlite3 --version && \
+    echo "=== Checking for SQLITE_ENABLE_SNAPSHOT ===" && \
+    sqlite3 :memory: "PRAGMA compile_options;" | grep -i snapshot || echo "No snapshot support in system SQLite"
+
+# Run tests - this should pass with the fix
+CMD ["swift", "test", "--filter", "DatabaseSnapshotTests"]

@@ -1,0 +1,45 @@
+# Demonstrate the SQLite snapshot linking issue on Linux
+FROM swift:6.1-noble
+
+RUN apt-get update && apt-get install -y \
+    libsqlite3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /test
+
+# Create a simple test that tries to use SQLite snapshot functions
+RUN echo 'import SQLite3' > test.swift && \
+    echo 'import Foundation' >> test.swift && \
+    echo '' >> test.swift && \
+    echo '// Try to use snapshot functions - this will fail to link' >> test.swift && \
+    echo 'func testSnapshot() {' >> test.swift && \
+    echo '    var db: OpaquePointer?' >> test.swift && \
+    echo '    sqlite3_open(":memory:", &db)' >> test.swift && \
+    echo '    ' >> test.swift && \
+    echo '    // These functions exist in headers but not in the library' >> test.swift && \
+    echo '    var snapshot: OpaquePointer?' >> test.swift && \
+    echo '    let result = sqlite3_snapshot_get(db, "main", &snapshot)' >> test.swift && \
+    echo '    print("Snapshot result: \\(result)")' >> test.swift && \
+    echo '    ' >> test.swift && \
+    echo '    sqlite3_close(db)' >> test.swift && \
+    echo '}' >> test.swift && \
+    echo '' >> test.swift && \
+    echo 'testSnapshot()' >> test.swift
+
+# Show the test file
+RUN echo "=== Test file content ===" && cat test.swift
+
+# Try to compile - this will succeed
+RUN echo "=== Compiling (will succeed) ===" && \
+    swiftc -c test.swift -o test.o && \
+    echo "✅ Compilation succeeded"
+
+# Try to link - this will fail with undefined reference errors
+RUN echo "=== Linking (will fail) ===" && \
+    swiftc test.o -o test -lsqlite3 || \
+    echo "❌ Linking failed as expected - snapshot functions not available in Linux SQLite"
+
+# Show available SQLite compile options
+RUN echo "=== SQLite compile options ===" && \
+    sqlite3 :memory: "PRAGMA compile_options;" | sort
